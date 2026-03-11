@@ -163,8 +163,9 @@ classdef AsphericalScatterer < SphericalScatterer
             end
         
             obj.shapeDecompMat = [Mup; Mdown];
-            
-            % obj.genScatMat = [obj.scaMatrix; obj.intMatrix] / obj.shapeDecompMat;
+            % disp(cond([Mup, zeros(2*M+1); zeros(2*M+1), Mdown]))
+            obj.genScatMat = [obj.scaMatrix, zeros(2*M+1); zeros(2*M+1), obj.intMatrix] *...
+                             [inMup, zeros(2*M+1); zeros(2*M+1), Mdown];
 
         end
         

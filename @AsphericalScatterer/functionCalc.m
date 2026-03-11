@@ -19,9 +19,9 @@ function FUNCTIONS = functionCalc(obj)
     r1 = n1 * r0 * f;
     r2 = n2 * r0 * f;
 
-    alpha_arr_1 = zeros([P + 2, 2 * M +  2, p]); % d^p / dr^p besselj(m, r)
-    alpha_arr_2 = zeros([P + 2, 2 * M + 2, p]); % d^p / d(n*r)^p besselj(m, n*r)
-    beta_arr = zeros([P + 2, 2 * M + 2, p]); % d^p / dr^p besselh(m, r)
+    alpha_arr_1 = zeros([P + 3, 2 * M +  2, p]); % d^p / dr^p besselj(m, r)
+    alpha_arr_2 = zeros([P + 3, 2 * M + 2, p]); % d^p / d(n*r)^p besselj(m, n*r)
+    beta_arr = zeros([P + 3, 2 * M + 2, p]); % d^p / dr^p besselh(m, r)
     eta_arr_1 = zeros([P + 2, 2 * M + 1, p]); % d^p / dr^p besselj(m, r) / r
     eta_arr_2 = zeros([P + 2, 2 * M + 1, p]); % d^p / d(n*r)^p besselj(m, n*r) / (n*r)
     sigma_arr = zeros([P + 2, 2 * M + 1, p]); % d^p / dr^p besselh(m, r) / r
@@ -42,9 +42,9 @@ function FUNCTIONS = functionCalc(obj)
 
     for p = (2:(P+2))
         for m = m_indices(p:(end-p+1))
-            alpha_arr_temp_1(2, m, :) = 0.5 * n1 * (alpha_arr_temp_1(1, m-1, :) - alpha_arr_temp_1(1, m+1, :));
-            alpha_arr_temp_2(2, m, :) = 0.5 * n2 * (alpha_arr_temp_2(1, m-1, :) - alpha_arr_temp_2(1, m+1, :));
-            beta_arr_temp(2, m, :)    = 0.5 * n1 * (beta_arr_temp(1, m-1, :)    - beta_arr_temp(1, m+1, :));
+            alpha_arr_temp_1(2, m, :) = 0.5 * (alpha_arr_temp_1(1, m-1, :) - alpha_arr_temp_1(1, m+1, :));
+            alpha_arr_temp_2(2, m, :) = 0.5 * (alpha_arr_temp_2(1, m-1, :) - alpha_arr_temp_2(1, m+1, :));
+            beta_arr_temp(2, m, :)    = 0.5 * (beta_arr_temp(1, m-1, :)    - beta_arr_temp(1, m+1, :));
         end
 
         alpha_arr_1(p, :, :) = alpha_arr_temp_1(2, (P + 1 + 1):(2*M + 1 + P + 1 + 1), :);
@@ -56,7 +56,7 @@ function FUNCTIONS = functionCalc(obj)
         beta_arr_temp(1, :, :) = beta_arr_temp(2, :, :);
     end
 
-    for p = (1:P+1)
+    for p = (1:P+2)
         for m = cat(2, (1:M), (M+2:2*M+1))
             eta_arr_1(p, m, :) = reshape(alpha_arr_1(p+1, m, :) + ...
                 alpha_arr_1(p, m+1, :), 1, []) / (m - 1 - M);

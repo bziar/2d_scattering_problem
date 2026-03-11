@@ -28,6 +28,8 @@ beta_arr = FUNCTIONS.beta_arr;
 eta_arr_2 = FUNCTIONS.eta_arr_2;
 sigma_arr = FUNCTIONS.sigma_arr;
 
+
+
 f  = obj.shape;
 fD = obj.shDer;
 
@@ -77,6 +79,8 @@ for m1 = (-M:M)
             integrals(3 , q  , m1+M+1, m2+M+1) = trapz(phi_arr, f .* beta_1 .* exponent .* pow_1 / fact) / (2 * pi);
             integrals(4 , q+1, m1+M+1, m2+M+1) = trapz(phi_arr, f1 .* beta_1 .* exponent .* pow_1 / fact) / (2 * pi);
             integrals(5 , q  , m1+M+1, m2+M+1) = trapz(phi_arr, 1j * m1 * fD .* sigma_ .* exponent .* pow_1 / fact) / (2 * pi);
+            % scatter(phi_arr, abs(f1 .* beta_1 .* exponent .* pow_1 / fact), 1)
+            %     return
             integrals(6 , q+1, m1+M+1, m2+M+1) = trapz(phi_arr, 1j * m1 * f1Der .* sigma_ .* exponent .* pow_1 / fact) / (2 * pi);
             integrals(7 , q  , m1+M+1, m2+M+1) = trapz(phi_arr, f .* alph_1 .* exponent .* pow_2 / fact) / (2 * pi);
             integrals(8 , q+1, m1+M+1, m2+M+1) = trapz(phi_arr, f1 .* alph_1 .* exponent .* pow_2 / fact) / (2 * pi);
@@ -104,10 +108,12 @@ for m1 = (-M:M)
 
     end
 end
+    % plot(squeeze(log(abs(integrals(4 , q, :, m2+M+1)))))
+    % return
 % disp(sum(sign(integrals(:))))
 % integrals = -real(integrals) + imag(integrals);
-plot(squeeze(real(integrals(4 , 2, 10, :))))
-return
+% plot(squeeze(real(integrals(1, 2, 10, :))))
+% return
 % %%
 
 new_scat_matrix = 0 * obj.genScatMat;
@@ -194,6 +200,9 @@ obj.scaMatrix = obj.genScatMat(1:2*M+1, :) * obj.shapeDecompMat;
 coeffs = obj.genScatMat * st0_coeffs.';
 obj.scaCoeffs = coeffs(1:2*M+1);
 obj.intCoeffs = coeffs(2*M+2:end);
+
+% obj.scaCoeffs = obj.scaMatrix * obj.incCoeffs;
+
 
 
 end
