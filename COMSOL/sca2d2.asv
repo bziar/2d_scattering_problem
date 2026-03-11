@@ -1,0 +1,61 @@
+
+ mphlaunch(model22)
+function out = model22
+%
+% sca2d2.m
+%
+% Model exported on Feb 3 2026, 12:00 by COMSOL 6.2.0.339.
+
+import com.comsol.model.*
+import com.comsol.model.util.*
+
+model = ModelUtil.create('Model');
+
+model.modelPath('C:\Users\user\Documents\Arseniy\SWITCHING_V2\COMSOL');
+
+model.component.create('comp1', true);
+
+model.component('comp1').geom.create('geom1', 2);
+
+model.component('comp1').mesh.create('mesh1');
+
+model.component('comp1').physics.create('ewfd', 'ElectromagneticWavesFrequencyDomain', 'geom1');
+
+model.component('comp1').geom('geom1').run;
+model.component('comp1').geom('geom1').create('c1', 'Circle');
+
+model.param.set('sizePar', '2');
+model.param.set('N', '20');
+model.param.set('nrfer0', '2');
+model.param.set('lambda', '2*pi* 1[m] / sizePar');
+model.param.set('maxR', 'sizePar * ceil(sqrt(N)) * 3');
+
+model.component('comp1').geom('geom1').feature('c1').set('r', 'maxR');
+model.component('comp1').geom('geom1').runPre('fin');
+model.component('comp1').geom('geom1').feature('c1').set('r', 'maxR +1.5* sizeP');
+model.component('comp1').geom('geom1').feature('c1').setIndex('layer', '1.5* sizeP', 0);
+model.component('comp1').geom('geom1').run('');
+model.component('comp1').geom('geom1').feature('c1').set('r', 'maxR +1.5 * sizePar');
+model.component('comp1').geom('geom1').feature('c1').setIndex('layer', '1.5* sizePar', 0);
+model.component('comp1').geom('geom1').runPre('fin');
+model.component('comp1').geom('geom1').feature('c1').setIndex('layer', '1* sizePar', 0);
+model.component('comp1').geom('geom1').feature('c1').set('r', 'maxR +1 * sizePar');
+model.component('comp1').geom('geom1').runPre('fin');
+
+N = 20; r = 0.5;
+addpath('C:\Users\user\Documents\Arseniy\SWITCHING_V2');
+init_coord = cell2mat(startPosition(N, 4.5*r));
+params = table2array(readtable('C:\Users\user\Documents\Arseniy\SWITCHING_V2/params.txt'));
+radii = r * (1 + params(1:N));
+coords = r * [0; 0; params(N+1:end)].' + init_coord(:).';
+for n = 1:N
+    name = sprintf('c%d', n+1);
+    model.component('comp1').geom('geom1').create(name, 'Circle');
+    model.component('comp1').geom('geom1').feature(name).set('r', radii(n));
+    model.component('comp1').geom('geom1').feature(name).set('pos', coords(2*n-1:2*n));
+end
+model.component('comp1').geom('geom1').runPre('fin');
+
+out = model;
+
+end

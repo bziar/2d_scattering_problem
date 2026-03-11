@@ -1,0 +1,549 @@
+
+M = 12;
+N = 30;
+r = 0.7;
+
+% radii = cell(1, N);
+% shifts = cell(1, N);
+
+% for k = 1:N
+%     radii{k} = 0;
+%     shifts{k} = [0; 0]
+% end
+close all;
+tic
+SYSTEM.r = r;
+SYSTEM.M = M;
+SYSTEM.N = N;
+% SYSTEM.n2 = 2.0527; %Si
+SYSTEM.n2 = 2.81;
+% SYSTEM.n1 = 1;
+% SYSTEM.n1 = 3.1716-0.01j; %poly-Si
+% SYSTEM.n1 = 1.5090; %Si3N4
+SYSTEM.n1 = 1.59; %from Lumerical
+SYSTEM.coordinates = startPosition(N, 2*r);
+
+% SYSTEM.Q = (qMatrix(M, -5*pi/6, pi/72));
+% SYSTEM.Q2 = (qMatrix(M, -7*pi/6, pi/72));
+
+SYSTEM.Q = (qMatrix(M, pi/4, pi/12));
+SYSTEM.Q2 = (qMatrix(M, pi-pi/4, pi/12));
+
+SYSTEM.Q_ = pinv(SYSTEM.Q.'*SYSTEM.Q)*SYSTEM.Q.';
+SYSTEM.proj = (eye(2*M+1) - SYSTEM.Q * SYSTEM.Q_);
+% SYSTEM.proj = SYSTEM.proj;
+
+% SYSTEM.Q2 = (qMatrix(M, pi/4+pi, pi/4));
+% SYSTEM.Q2_ = (SYSTEM.Q.'*SYSTEM.Q)\SYSTEM.Q.';
+% SYSTEM.proj2 = (eye(2*M+1) - SYSTEM.Q * SYSTEM.Q_);
+% SYSTEM.proj2 = SYSTEM.proj / norm(SYSTEM.proj);
+
+
+% test = AsphericalScatterer(...
+%     'sizeParam', SYSTEM.r, ...
+%     'refrIndexOut', SYSTEM.n1, ...
+%     'refrIndexIn', SYSTEM.n2, ...
+%     'maxHarmNum', M, ...
+%     'maxShapeCoeffsNum', 4, ...
+%     'shapeGridSize', 2^4+1);
+test = SphericalScatterer(...
+    'sizeParam', r, ...
+    'refrIndexOut', SYSTEM.n1, ...
+    'refrIndexIn', SYSTEM.n2, ...
+    'maxHarmNum', SYSTEM.M);
+test.Calculate();
+test.SetIncField('gauss');
+test.FarFieldPlot();
+% test.NearFieldPlot('scale', 10, 'resolution', 48);
+% return
+% test.ShapeUpdate([zeros(1, 6), 0.15, 0]);
+% test.ShapePlot();
+% test.EBCM();
+
+% test.NearFieldPlot('scale', 15);
+% SYSTEM.scaM = test.scaMatrix;
+SYSTEM.gauss = test.incCoeffs;
+SYSTEM.deleted = [];
+test = SphericalScatterer(...
+    'sizeParam', 1.1832*r, ...
+    'refrIndexOut', SYSTEM.n1, ...
+    'refrIndexIn', SYSTEM.n2, ...
+    'maxHarmNum', SYSTEM.M);
+test.Calculate();
+test.SetIncField('gauss');
+test.FarFieldPlot();
+SYSTEM.gauss2 = test.incCoeffs;
+clear test;
+% rng(123664);
+fprintf('Запуск в: %s\n', datestr(now));
+rng_state = rng();
+fprintf('Seed: %d, Тип: %s\n', rng_state.Seed, rng_state.Type);
+save('last_run_rng.mat', 'rng_state');
+initial_params = 0.1*randn(3*N-2, 1);
+
+plotGeometry(SYSTEM, initial_params);
+% return
+
+% fun = @(x) targetFunction(SYSTEM, x);
+% check_gradient(fun, initial_params);
+% return
+
+targetFunction(SYSTEM, initial_params, true);
+% return
+% drawnow
+optimal_params = initial_params;
+options = struct();
+options.method = 'adam';  % Лучше всего работает с "плоскими" ландшафтами
+options.learning_rate = 1;  % Начните с меньшего
+options.max_iterations = 80;
+options.beta1 = 0.9;
+options.beta2 = 0.999;
+options.plateau_patience = 5;  % Дольше ждем на плато
+options.noise_scale = 0.05;  % Небольшой шум для выхода из локальных минимумов
+options.gradient_clip = 1.0;
+options.bounds = initial_params;
+for i = 1:N
+    options.bounds(1, i) = -0.99;
+    options.bounds(2, i) = 0.15;
+end
+for i = N+1:3*N-2
+    options.bounds(1, i) = -0.2;
+    options.bounds(2, i) = 0.2;
+end
+[optimal_params, history] = gradientDescentImproved(SYSTEM, initial_params, options);
+
+% options = optimset('PlotFcns',@optimplotfval, 'maxIt', 8000);
+% [x, fval] = fminsearch(@(x) targetFunction(SYSTEM, x), initial_params, options);
+% optimal_params = x;
+toc
+targetFunction(SYSTEM, optimal_params, true);
+figure; plot(history.f_values)
+plotGeometry(SYSTEM, optimal_params);
+save('params5.mat', 'optimal_params')
+
+
+
+function [y, grad] = targetFunction(SYSTEM, params, draw)
+if nargin < 3
+    draw = false;
+end
+N = SYSTEM.N;
+M = SYSTEM.M;
+radii = SYSTEM.r * (1+params(1:N));
+shifts = [0; 0; SYSTEM.r * params(N+1:end)];
+coord = cell(1, N);
+scaMatrices = cell(1, N);
+scaMatrices_der = cell(1, N);
+angles = cell(1, N);
+grad = zeros(numel(params), 1);
+y = 0;
+ChangeCoeff = 1.1832;
+% ChangeCoeff = 1;
+for nnn = [ChangeCoeff, 1]
+    for k = 1:N
+        test = SphericalScatterer(...
+            'sizeParam', nnn * radii(k), ...
+            'refrIndexOut', SYSTEM.n1, ...
+            'refrIndexIn', real(SYSTEM.n2) + imag(SYSTEM.n2), ...
+            'maxHarmNum', SYSTEM.M);
+        test.Calculate();
+        scaMatrices{k} = test.scaMatrix;
+        % scaMatrices{k} = SYSTEM.scaM;
+        scaMatrices_der{k} = test.scaMatrix_der;
+        % scaMatrices_der{k} = 0 * SYSTEM.scaM;
+        coord{k} = SYSTEM.coordinates{k} + [shifts(2*k-1); shifts(2*k)];
+        coord{k} = nnn * coord{k};
+        % coord{k} = SYSTEM.coordinates{k};
+        angles{k} = 0 * params(k);
+    end
+    
+    mTest = MultiSystem(...
+        'sizeParam', sqrt(N) * SYSTEM.r, ...
+        'refrIndexOut', SYSTEM.n1, ...
+        'maxHarmNum', M, ...
+        'numParticles', N, ...
+        'coordinates', coord, ...
+        'angles', angles, ...
+        'scaMatrices', scaMatrices, ...
+        'scaMatrices_der', scaMatrices_der);
+    % mTest.CalcIterative(300);
+    if nnn == ChangeCoeff
+        mTest.SetIncField('other', SYSTEM.gauss2);
+    else
+        mTest.SetIncField('other', SYSTEM.gauss);
+    end
+    mTest.Calculate2();
+    
+    
+    if draw
+        % mTest.scaCoeffs = SYSTEM.proj * mTest.scaCoeffs;
+        if nnn == ChangeCoeff
+            ax = mTest.FarFieldPlot();
+            hold(ax, 'on');
+        else
+            mTest.FarFieldPlot(ax);
+        end
+    end
+    
+    % y = mTest.CrossSection(pi/4+pi, 2*pi-pi/20);
+    a = mTest.scaCoeffs;
+    if nnn == ChangeCoeff
+        Q = SYSTEM.Q;
+    else
+        Q = SYSTEM.Q2;
+    end
+    nrm = (a' * a);
+    y1 = real((a' * Q * a) / nrm);
+    y = y - y1;
+    
+    
+    for p = 1:3*N-2
+        if p > N
+            k = p+2;
+        else
+            k = p;
+        end
+        a_der = nnn * SYSTEM.r * mTest.scaMatrix_der{k};
+        grad(p) = grad(p) - real((a_der' * Q * a + a' * Q * a_der) * nrm - ...
+            (a' * Q * a) * (a_der' * a + a' * a_der)) / nrm^2;
+    end
+end
+end
+
+
+
+
+
+
+
+
+
+function [optimal_params, history] = gradientDescentImproved(SYSTEM, initial_params, options)
+% Улучшенный градиентный спуск с адаптивными методами оптимизации
+%
+% Входные параметры:
+%   SYSTEM - структура с параметрами системы
+%   initial_params - начальные параметры [радиусы; смещения]
+%   options - структура с настройками оптимизации
+%
+% Выходные параметры:
+%   optimal_params - оптимальные параметры
+%   history - история оптимизации
+
+% Параметры по умолчанию
+default_options = struct(...
+    'method', 'adam', ...           % 'sgd', 'momentum', 'adagrad', 'rmsprop', 'adam', 'lbfgs'
+    'learning_rate', 0.1, ...        % Начальная скорость обучения
+    'max_iterations', 1000, ...      % Максимальное число итераций
+    'max_function_evals', 5000, ...  % Максимум вычислений функции
+    'tolerance', 1e-4, ...           % Критерий остановки по изменению функции
+    'grad_tolerance', 1e-8, ...       % Критерий остановки по норме градиента
+    'verbose', true, ...              % Вывод информации о процессе
+    'verbose_freq', 2, ...           % Частота вывода
+    'momentum', 0.9, ...              % Коэффициент момента
+    'beta1', 0.9, ...                 % Для Adam (экспоненциальное затухание 1-го момента)
+    'beta2', 0.999, ...               % Для Adam (экспоненциальное затухание 2-го момента)
+    'epsilon', 1e-8, ...              % Малое число для численной стабильности
+    'gradient_clip', 1.0, ...          % Максимальное значение градиента (clipping)
+    'use_nesterov', true, ...          % Использовать ускорение Нестерова
+    'restart_threshold', 5, ...        % Порог для перезапуска при застревании
+    'plateau_patience', 20, ...        % Терпение для плато
+    'plateau_factor', 0.5, ...         % Коэффициент уменьшения lr на плато
+    'bounds', [], ...                  % Ограничения [lower; upper]
+    'noise_scale', 0.0 ...             % Добавление шума для выхода из локальных минимумов
+    );
+
+% Заполнение недостающих опций значениями по умолчанию
+if nargin < 3
+    options = default_options;
+else
+    option_fields = fieldnames(default_options);
+    for i = 1:length(option_fields)
+        if ~isfield(options, option_fields{i})
+            options.(option_fields{i}) = default_options.(option_fields{i});
+        end
+    end
+end
+
+% ДОБАВЛЕНО: Инициализация глобальной переменной для остановки
+global STOP_OPTIMIZATION
+STOP_OPTIMIZATION = false;
+if options.verbose
+    fprintf('==================================================\n');
+    fprintf('Начало градиентного спуска (метод: %s)\n', options.method);
+    fprintf('Размерность задачи: %d\n', length(initial_params));
+    fprintf('Для остановки оптимизации введите в командном окне: STOP_OPTIMIZATION = true;\n');
+    fprintf('==================================================\n');
+end
+
+% Инициализация
+params = initial_params(:);
+n_params = length(params);
+best_params = params;
+best_value = Inf;
+
+% История оптимизации
+history.f_values = [];
+history.grad_norms = [];
+history.params_history = [];
+history.learning_rates = [];
+history.method = options.method;
+
+% Инициализация для различных методов
+switch lower(options.method)
+    case 'sgd'
+        % Простой SGD без адаптации
+    case 'momentum'
+        velocity = zeros(size(params));
+    case 'nesterov'
+        velocity = zeros(size(params));
+    case 'adagrad'
+        G = zeros(size(params));  % Сумма квадратов градиентов
+    case 'rmsprop'
+        E_g = zeros(size(params));  % Скользящее среднее квадратов градиентов
+    case 'adam'
+        m = zeros(size(params));  % 1-й момент
+        v = zeros(size(params));  % 2-й момент
+        t = 0;  % Счетчик шагов
+    case 'lbfgs'
+        % Инициализация L-BFGS
+        lbfgs_memory = 10;  % Размер памяти L-BFGS
+        s_history = {};  % История шагов
+        y_history = {};  % История изменений градиента
+        rho_history = [];
+end
+
+% Для отслеживания плато
+plateau_counter = 0;
+best_value_plateau = Inf;
+
+% Основной цикл оптимизации
+func_evals = 0;
+for iter = 1:options.max_iterations
+    % ДОБАВЛЕНО: Проверка флага остановки из консоли
+    global STOP_OPTIMIZATION
+    if STOP_OPTIMIZATION
+        if options.verbose
+            fprintf('\n==================================================\n');
+            fprintf('ОПТИМИЗАЦИЯ ОСТАНОВЛЕНА ПОЛЬЗОВАТЕЛЕМ на итерации %d\n', iter);
+            fprintf('==================================================\n');
+        end
+        STOP_OPTIMIZATION = false; % Сбрасываем флаг
+        break;
+    end
+    
+    % Вычисление целевой функции и градиента
+    [current_value, gradient] = targetFunction(SYSTEM, params);
+    func_evals = func_evals + 1;
+    
+    % Проверка на NaN
+    if any(isnan(gradient)) || isnan(current_value)
+        warning('NaN обнаружен на итерации %d', iter);
+        break;
+    end
+    
+    % Норма градиента
+    grad_norm = norm(gradient);
+    
+    % Сохранение истории
+    history.f_values(end+1) = current_value;
+    history.grad_norms(end+1) = grad_norm;
+    history.params_history(:, end+1) = params;
+    history.learning_rates(end+1) = options.learning_rate;
+    
+    % Обновление лучшего решения
+    if current_value < best_value
+        best_value = current_value;
+        best_params = params;
+    end
+    
+    % Вывод информации
+    if options.verbose && (mod(iter, options.verbose_freq) == 0 || iter == 1)
+        improvement = best_value - current_value;
+        fprintf('Итерация %4d: f = %.6e (лучший: %.6e), ||∇f|| = %.6e, lr = %.4f, улучшение = %.2e\n', ...
+            iter, current_value, best_value, grad_norm, options.learning_rate, improvement);
+    end
+    
+    % Критерии остановки
+    if grad_norm < options.grad_tolerance
+        if options.verbose
+            fprintf('Остановка: норма градиента ниже порога (%.1e)\n', options.grad_tolerance);
+        end
+        break;
+    end
+    
+    if iter > 1
+        rel_change = abs(history.f_values(end) - history.f_values(end-1)) / (abs(history.f_values(end-1)) + options.epsilon);
+        if rel_change < options.tolerance
+            if options.verbose
+                fprintf('Остановка: относительное изменение функции ниже порога (%.1e)\n', options.tolerance);
+            end
+            break;
+        end
+    end
+    
+    % Проверка на плато
+    if current_value > best_value_plateau - 1e-6
+        plateau_counter = plateau_counter + 1;
+    else
+        plateau_counter = 0;
+        best_value_plateau = current_value;
+    end
+    
+    if plateau_counter >= options.plateau_patience
+        options.learning_rate = options.learning_rate * options.plateau_factor;
+        if options.verbose
+            fprintf('  Плато обнаружено! Уменьшаем learning rate до %.4f\n', options.learning_rate);
+        end
+        plateau_counter = 0;
+        
+        % Добавляем немного шума для выхода из локального минимума
+        if options.noise_scale > 0
+            noise = options.noise_scale * randn(size(params));
+            params = params + noise;
+            if options.verbose
+                fprintf('  Добавлен шум для выхода из локального минимума\n');
+            end
+        end
+    end
+    
+    % Обрезание градиента (gradient clipping)
+    if options.gradient_clip > 0
+        grad_norm_clip = norm(gradient);
+        if grad_norm_clip > options.gradient_clip
+            gradient = gradient * options.gradient_clip / grad_norm_clip;
+        end
+    end
+    
+    % Обновление параметров в зависимости от метода
+    switch lower(options.method)
+        case 'sgd'
+            % Простой SGD
+            delta = -options.learning_rate * gradient;
+            params = params + delta;
+            
+        case 'momentum'
+            % Momentum
+            velocity = options.momentum * velocity - options.learning_rate * gradient;
+            params = params + velocity;
+            
+        case 'nesterov'
+            % Nesterov Accelerated Gradient
+            if options.use_nesterov && iter > 1
+                % Нестеров: сначала делаем шаг по накопленной скорости
+                params_nesterov = params + options.momentum * velocity;
+                [~, grad_nesterov] = targetFunction(SYSTEM, params_nesterov);
+                func_evals = func_evals + 1;
+                velocity = options.momentum * velocity - options.learning_rate * grad_nesterov;
+            else
+                velocity = options.momentum * velocity - options.learning_rate * gradient;
+            end
+            params = params + velocity;
+            
+        case 'adagrad'
+            % AdaGrad
+            G = G + gradient.^2;
+            delta = -options.learning_rate * gradient ./ (sqrt(G) + options.epsilon);
+            params = params + delta;
+            
+        case 'rmsprop'
+            % RMSprop
+            E_g = options.beta2 * E_g + (1 - options.beta2) * gradient.^2;
+            delta = -options.learning_rate * gradient ./ (sqrt(E_g) + options.epsilon);
+            params = params + delta;
+            
+        case 'adam'
+            % Adam
+            t = t + 1;
+            m = options.beta1 * m + (1 - options.beta1) * gradient;
+            v = options.beta2 * v + (1 - options.beta2) * gradient.^2;
+            
+            % Смещение
+            m_hat = m / (1 - options.beta1^t);
+            v_hat = v / (1 - options.beta2^t);
+            
+            delta = -options.learning_rate * m_hat ./ (sqrt(v_hat) + options.epsilon);
+            params = params + delta;
+            
+        case 'lbfgs'
+            % L-BFGS (квазиньютоновский метод)
+            if iter == 1
+                % Первая итерация - градиентный шаг
+                params = params - options.learning_rate * gradient;
+            else
+                % Получаем предыдущие значения
+                grad_prev = history.grad_norms(end-1) * gradient / grad_norm;  % Аппроксимация
+                params_prev = history.params_history(:, end-1);
+                
+                % Вычисляем s и y
+                s = params - params_prev;
+                y = gradient - grad_prev;
+                
+                % Сохраняем в историю
+                if length(s_history) >= lbfgs_memory
+                    s_history(1) = [];
+                    y_history(1) = [];
+                    rho_history(1) = [];
+                end
+                
+                rho = 1 / (y' * s + options.epsilon);
+                s_history{end+1} = s;
+                y_history{end+1} = y;
+                rho_history(end+1) = rho;
+                
+                % Двухпетлевой алгоритм L-BFGS
+                q = gradient;
+                alpha = zeros(length(s_history), 1);
+                
+                % Обратный проход
+                for i = length(s_history):-1:1
+                    alpha(i) = rho_history(i) * (s_history{i}' * q);
+                    q = q - alpha(i) * y_history{i};
+                end
+                
+                % Масштабирование
+                if ~isempty(y_history)
+                    gamma = (s_history{end}' * y_history{end}) / (y_history{end}' * y_history{end} + options.epsilon);
+                else
+                    gamma = 1;
+                end
+                
+                r = gamma * q;
+                
+                % Прямой проход
+                for i = 1:length(s_history)
+                    beta = rho_history(i) * (y_history{i}' * r);
+                    r = r + s_history{i} * (alpha(i) - beta);
+                end
+                
+                % Шаг L-BFGS
+                delta = -r;
+                params = params + delta;
+            end
+    end
+    
+    % Применение ограничений (bounds)
+    if ~isempty(options.bounds)
+        params = max(options.bounds(1, :).', min(options.bounds(2, :).', params));
+    end
+    
+    % Проверка на превышение числа вычислений функции
+    if func_evals >= options.max_function_evals
+        if options.verbose
+            fprintf('Остановка: превышено максимальное число вычислений функции (%d)\n', options.max_function_evals);
+        end
+        break;
+    end
+end
+
+optimal_params = best_params;
+
+if options.verbose
+    fprintf('==================================================\n');
+    fprintf('Оптимизация завершена.\n');
+    fprintf('Лучшее значение функции: %.6e\n', best_value);
+    fprintf('Всего итераций: %d\n', length(history.f_values));
+    fprintf('Всего вычислений функции: %d\n', func_evals);
+    fprintf('==================================================\n');
+end
+end
