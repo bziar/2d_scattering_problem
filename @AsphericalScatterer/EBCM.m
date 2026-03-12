@@ -111,53 +111,49 @@ for p = 1:P
 end
 
 % =======================
-% Экспоненты e^{i(m1-m2)phi}
+% FFT-based integration
 % =======================
-deltaM = (-2*M):(2*M);
-E = exp(1j * (deltaM.') * phiArr);  % (4M+1) x N
+dphi = 2*pi/N;
 
-% =======================
-% Общие множители
-% =======================
-c1 = -0.25j * r0;
-c2 =  0.25j * r0;
+c1 = -0.25j * r0 * dphi;
+c2 =  0.25j * r0 * dphi;
 
-% =======================
-% Основной цикл
-% =======================
 for i2 = 1:(2*M+1)
 
     m2 = m_vals(i2);
 
-    a0_m2 = squeeze(alpha1(1,i2,:)).';
-    a1_m2 = squeeze(alpha1(2,i2,:)).';
-    b0_m2 = squeeze(beta(1,i2,:)).';
-    b1_m2 = squeeze(beta(2,i2,:)).';
+    a0_m2  = squeeze(alpha1(1,i2,:)).';
+    a1_m2  = squeeze(alpha1(2,i2,:)).';
+    b0_m2  = squeeze(beta(1,i2,:)).';
+    b1_m2  = squeeze(beta(2,i2,:)).';
     eta_m2 = squeeze(eta1(1,i2,:)).';
     sig_m2 = squeeze(sigma(1,i2,:)).';
+
+    termB = (b1_m2.*f + 1j*m2*sig_m2.*fD);
+    termA = (a1_m2.*f + 1j*m2*eta_m2.*fD);
 
     for i1 = 1:(2*M+1)
 
         m1 = m_vals(i1);
+        k  = m1 - m2;
 
-        A0_m1 = squeeze(alpha2(1,i1,:)).';
-        A1_m1 = squeeze(alpha2(2,i1,:)).';
+        A0_m1  = squeeze(alpha2(1,i1,:)).';
+        A1_m1  = squeeze(alpha2(2,i1,:)).';
         Eta_m1 = squeeze(eta2(1,i1,:)).';
 
-        expTerm = E(m1-m2 + 2*M + 1, :);
+        termC = (A1_m1.*f - 1j*m1*Eta_m1.*fD);
 
-        integrand1 = ( ...
-            n1*A0_m1 .* (b1_m2.*f + 1j*m2*sig_m2.*fD) ...
-          - n2*b0_m2 .* (A1_m1.*f - 1j*m1*Eta_m1.*fD) ...
-          ) .* expTerm;
+        integrand1 = n1*A0_m1.*termB - n2*b0_m2.*termC;
+        integrand2 = n1*A0_m1.*termA - n2*a0_m2.*termC;
 
-        integrand2 = ( ...
-            n1*A0_m1 .* (a1_m2.*f + 1j*m2*eta_m2.*fD) ...
-          - n2*a0_m2 .* (A1_m1.*f - 1j*m1*Eta_m1.*fD) ...
-          ) .* expTerm;
+        F1 = fft(integrand1);
+        F2 = fft(integrand2);
 
-        Q1(i2,i1) = c1 * trapz(phiArr, integrand1);
-        Q2(i2,i1) = c2 * trapz(phiArr, integrand2);
+        idx = mod(k,N) + 1;
+
+        Q1(i2,i1) = c1 * F1(idx);
+        Q2(i2,i1) = c2 * F2(idx);
+
     end
 end
 
@@ -165,7 +161,7 @@ end
 % Решение без inv()
 % =======================
 obj.intMatrix = eye(size(Q1)) / Q1;
-obj.scaMatrix = (Q2 / Q1).';
+obj.scaMatrix = (Q2 / Q1);
 
 obj.intCoeffs = obj.intMatrix * obj.incCoeffs;
 obj.scaCoeffs = obj.scaMatrix * obj.incCoeffs;

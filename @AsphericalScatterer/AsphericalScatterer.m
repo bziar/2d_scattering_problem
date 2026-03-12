@@ -52,7 +52,7 @@ classdef AsphericalScatterer < SphericalScatterer
                 
             end
             
-            obj.shapeCoeffs = zeros(obj.maxShapeCoeffsNum, 1);
+            obj.shapeCoeffs = zeros(1, 2*obj.maxShapeCoeffsNum);
             obj.shape = ones(1, obj.shapeGridSize);
             obj.shDer = zeros(1, obj.shapeGridSize);
         end
@@ -95,78 +95,35 @@ classdef AsphericalScatterer < SphericalScatterer
             obj.scaCoeffs = obj.scaMatrix * obj.incCoeffs;
         end
 
-        % function obj = ShapeDecomposition(obj)
-        %     M = obj.maxHarmNum;
-        %     % obj.shapeDecompMat = zeros(2*(2*M+1), 2*M+1);
-        %     p = obj.shapeGridSize;
-        %     phiArr = linspace(0, 2*pi, p + 1);
-        %     phiArr = phiArr(1:end-1);
-        %     r = obj.refrIndexOut * obj.sizeParam * obj.shape;
-        % 
-        %     m = -M:M;
-        %     n = -M:M;
-        %     [Mgrid, Ngrid] = meshgrid(m, n);
-        %     mat = reshape(Mgrid - Ngrid, [2*M+1, 2*M+1, 1]);
-        %     EXP = exp(-1j * mat .* reshape(phiArr, [1, 1, p]));
-        %     bes    = zeros([2*M+1,1,p]);
-        %     besDer = zeros([2*M+1,1,p]);
-        %     for mval = m
-        %         bes(mval+M+1, 1, :) = besselj(mval, r);
-        %         besDer(mval+M+1, 1, :)  = 0.5 * obj.refrIndexOut * ...
-        %             (besselj(mval-1, r) - besselj(mval+1, r));
-        %     end
-        %     Mup   = -1/2/pi * trapz(phiArr, EXP .* bes, 3);
-        %     Mdown = -1/2/pi * trapz(phiArr, EXP .* besDer, 3);
-        % 
-        %     obj.shapeDecompMat = [Mup; Mdown];
-        % end
-
         function obj = ShapeDecomposition(obj)
             M = obj.maxHarmNum;
+            % obj.shapeDecompMat = zeros(2*(2*M+1), 2*M+1);
             p = obj.shapeGridSize;
-            phiArr = linspace(0, 2*pi, p+1);
-            phiArr = phiArr(1:end-1);   % p точек
-            dphi = 2*pi / p;
-        
-            r = obj.refrIndexOut * obj.sizeParam * obj.shape;  % [1 x p] или [1 x 1 x p]
+            phiArr = linspace(0, 2*pi, p + 1);
+            phiArr = phiArr(1:end-1);
+            r = obj.refrIndexOut * obj.sizeParam * obj.shape;
         
             m = -M:M;
             n = -M:M;
-            [Mgrid, Ngrid] = meshgrid(m, n); 
-            kMat = Mgrid - Ngrid;  % разница m-n, размер [2M+1, 2M+1]
-        
-            % Подготовка Bessel-функций
-            bes    = zeros(2*M+1, p);
-            besDer = zeros(2*M+1, p);
-            for idx = 1:length(m)
-                mval = m(idx);
-                bes(idx, :) = besselj(mval, r); 
-                besDer(idx, :) = 0.5 * obj.refrIndexOut * ...
-                    (besselj(mval-1, r) - besselj(mval+1, r));
+            [Mgrid, Ngrid] = meshgrid(m, n);
+            mat = reshape(Mgrid - Ngrid, [2*M+1, 2*M+1, 1]);
+            EXP = exp(-1j * mat .* reshape(phiArr, [1, 1, p]));
+            bes    = zeros([2*M+1,1,p]);
+            besDer = zeros([2*M+1,1,p]);
+            for mval = m
+                bes_ = besselj(mval, r);
+                bes(mval+M+1, 1, :) = bes_;
+                besDer(mval+M+1, 1, :)  = 0.5 * obj.refrIndexOut * obj.shape .* ...
+                    (besselj(mval-1, r) - besselj(mval+1, r)) + 1j * mval * obj.shDer .* bes_ ./ r;
+
+                    % der_inc_field_surf = der_inc_field_surf - inc_coeffs(mi).*exponent.* ...
+        % ((f+f1).*0.5.*(besselj(m-1,surface)-besselj(m+1,surface)) ...
+        % -1i*m*(fD+f1Der).*bes./surface);
             end
-        
-            % FFT по третьему измерению
-            % Для каждого m, вычисляем FFT по phi
-            BesFFT    = fft(bes, [], 2);       % размер [2M+1, p]
-            BesDerFFT = fft(besDer, [], 2);
-        
-            % Формирование матриц Mup и Mdown
-            Mup   = zeros(2*M+1, 2*M+1);
-            Mdown = zeros(2*M+1, 2*M+1);
-        
-            for i = 1:length(m)
-                for j = 1:length(n)
-                    k = mod(kMat(i,j), p) + 1;  % индекс FFT в MATLAB
-                    Mup(i,j)   = - (1/(2*pi)) * dphi * BesFFT(i, k);
-                    Mdown(i,j) = - (1/(2*pi)) * dphi * BesDerFFT(i, k);
-                end
-            end
+            Mup   = -1/2/pi * trapz(phiArr, EXP .* bes, 3);
+            Mdown = -1/2/pi * trapz(phiArr, EXP .* besDer, 3);
         
             obj.shapeDecompMat = [Mup; Mdown];
-            % disp(cond([Mup, zeros(2*M+1); zeros(2*M+1), Mdown]))
-            obj.genScatMat = [obj.scaMatrix, zeros(2*M+1); zeros(2*M+1), obj.intMatrix] *...
-                             [inMup, zeros(2*M+1); zeros(2*M+1), Mdown];
-
         end
         
         function obj = Init(obj)
@@ -208,6 +165,8 @@ classdef AsphericalScatterer < SphericalScatterer
         obj = SetShape(obj, type);
         obj = functionCalc(obj);
         obj = perturbStep(obj, f1Coeffs);
+        obj = perturbFull(obj, f1Coeffs);
+
         
     end
     
