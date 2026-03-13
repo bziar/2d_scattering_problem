@@ -58,7 +58,8 @@ classdef MultiSystem < BasicScatterer
         obj = Calculate(obj);
         obj = Calculate2(obj);
         obj = Calculate3(obj);
-        obj = Calculate4(obj);
+        obj = Calculate4(obj, calcDer);
+        obj = Calculate5(obj, calcDer);
         obj = CalcIterative(obj, numSteps);
         obj = MultiFarField(obj, parentAx);
         

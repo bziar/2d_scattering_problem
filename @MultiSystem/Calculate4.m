@@ -1,4 +1,4 @@
-function obj = Calculate3(obj)
+function obj = Calculate4(obj, calcDer)
 % Calculate3
 % Оптимизированная реализация расчёта (прямая + adjoint), ориентированная на
 % ускорение расчёта производных:
@@ -24,7 +24,9 @@ function obj = Calculate3(obj)
     diffVec1 = (-2*M1:2*M1).';
     mid1 = 2*M1 + 1; % diff=0
 
-    calcDer = true;
+    if nargin < 2
+        calcDer = true;
+    end
 
     %% Предвычисления
     R = diag(exp(-1j * mArr * pi));

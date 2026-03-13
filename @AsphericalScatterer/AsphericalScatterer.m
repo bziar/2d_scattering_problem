@@ -25,6 +25,8 @@ classdef AsphericalScatterer < SphericalScatterer
         
         shapeDecompMat double = [];
         genScatMat double = [];
+
+        gradients cell;
         
         % condViolation double = 0;
     end
@@ -97,32 +99,38 @@ classdef AsphericalScatterer < SphericalScatterer
 
         function obj = ShapeDecomposition(obj)
             M = obj.maxHarmNum;
-            % obj.shapeDecompMat = zeros(2*(2*M+1), 2*M+1);
+            Nm = 2*M + 1;
             p = obj.shapeGridSize;
             phiArr = linspace(0, 2*pi, p + 1);
             phiArr = phiArr(1:end-1);
-            r = obj.refrIndexOut * obj.sizeParam * obj.shape;
-        
-            m = -M:M;
-            n = -M:M;
-            [Mgrid, Ngrid] = meshgrid(m, n);
-            mat = reshape(Mgrid - Ngrid, [2*M+1, 2*M+1, 1]);
-            EXP = exp(-1j * mat .* reshape(phiArr, [1, 1, p]));
-            bes    = zeros([2*M+1,1,p]);
-            besDer = zeros([2*M+1,1,p]);
-            for mval = m
-                bes_ = besselj(mval, r);
-                bes(mval+M+1, 1, :) = bes_;
-                besDer(mval+M+1, 1, :)  = 0.5 * obj.refrIndexOut * obj.shape .* ...
-                    (besselj(mval-1, r) - besselj(mval+1, r)) + 1j * mval * obj.shDer .* bes_ ./ r;
 
-                    % der_inc_field_surf = der_inc_field_surf - inc_coeffs(mi).*exponent.* ...
-        % ((f+f1).*0.5.*(besselj(m-1,surface)-besselj(m+1,surface)) ...
-        % -1i*m*(fD+f1Der).*bes./surface);
+            n1 = obj.refrIndexOut;
+            r0 = obj.sizeParam;
+            f = obj.shape;
+            fD = obj.shDer;
+            surface = n1 * r0 * f;
+
+            m_vec = -M:M;
+
+            Mup = zeros(Nm, Nm);
+            Mdown = zeros(Nm, Nm);
+
+            for mi = 1:Nm
+                m = m_vec(mi);
+                bes = besselj(m, surface);
+
+                inc_term = -bes;
+                der_term = -n1 * (f .* 0.5 .* (besselj(m - 1, surface) - besselj(m + 1, surface)) ...
+                    - 1i * m * fD .* bes ./ surface);
+
+                c1 = ifft(inc_term);
+                c2 = ifft(der_term);
+
+                k_idx = mod(m - m_vec, p) + 1;
+                Mup(:, mi) = c1(k_idx);
+                Mdown(:, mi) = c2(k_idx);
             end
-            Mup   = -1/2/pi * trapz(phiArr, EXP .* bes, 3);
-            Mdown = -1/2/pi * trapz(phiArr, EXP .* besDer, 3);
-        
+
             obj.shapeDecompMat = [Mup; Mdown];
         end
         
@@ -164,8 +172,9 @@ classdef AsphericalScatterer < SphericalScatterer
 
         obj = SetShape(obj, type);
         obj = functionCalc(obj);
-        obj = perturbStep(obj, f1Coeffs);
-        obj = perturbFull(obj, f1Coeffs);
+        obj = PerturbStep(obj, f1Coeffs);
+        obj = PerturbFull(obj, f1Coeffs, nSteps);
+        obj = GradientCalc(obj);
 
         
     end
