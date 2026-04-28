@@ -15,7 +15,7 @@ switch lower(type)
         % ===== Complex source beam =====
         
         % Параметры пучка
-        w0 = 8;
+        w0 = 3;
         L  = 0;
         h  = 0;
         

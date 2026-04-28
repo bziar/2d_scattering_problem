@@ -1,67 +1,68 @@
-clc; clear all; close all;
 
-marr = 1:20;
-% marr = 5;
-yarr = 0*marr;
-tic
+s = struct();
+% f = @(x) targetFunction(s, x);
+N = 100;
+init = randi(1, [1, N]);
 
+disp(init)
 
-%% Параметры системы
-M = 15;                
-M1 = 8;
-r = 1;              
-c = 0.1;
+options = struct();
+options.method = 'adam';
+options.learning_rate = 0.5;
+options.max_iterations = 1000;
+options.beta1 = 0.9;
+options.beta2 = 0.999;
+options.plateau_patience = 10;
+options.noise_scale = 0.01;
+options.gradient_clip = 1.0;
+options.bounds = zeros(2, N);
+for i = 1:N
+    options.bounds(1, i) = -100;
+    options.bounds(2, i) = 100;
+end
 
-SYSTEM.r = r;
-SYSTEM.M = M;
-SYSTEM.M1 = M1;
-SYSTEM.n1 = 1.5;       % Показатель преломления окружающей среды
-SYSTEM.n2 = 3.5;       % Показатель преломления материала частиц
-
-test = AsphericalScatterer(...
-    'sizeParam', r, ...
-    'refrIndexOut', SYSTEM.n1, ...
-    'refrIndexIn', SYSTEM.n2, ...
-    'maxHarmNum', SYSTEM.M1, ...
-    'maxPertStep', 2, ...
-    'maxShapeCoeffsNum', 4, ...
-    'shapeGridSize', 2^11+1);
-test.Init();
-test.SetIncField('planewave');
-test.CheckCondition();
-
-testCoeffs = [zeros(1, 4), -0.2, -0.1, 0.25, -0.15];
-tic
-test.PerturbFull(testCoeffs, 30);
-toc
-% test.SetIncField('planewave');
-% test.FarFieldPlot;
-test.ShapeUpdate(testCoeffs);
-% tic
-% test.EBCM();
-% test.CheckCondition();
-% toc
-test.FarFieldPlot;
-% test.FarFieldPlot;
-% test.ShapePlot();
-
-scaM = test.scaMatrix;
-
-mTest = MultiSystem(...
-    'sizeParam', r, ...
-    'refrIndexOut', SYSTEM.n1, ...
-    'maxHarmNum', M, ...
-    'maxHarmNum1', M1, ...
-    'numParticles', 4, ...
-    'coordinates', {[-2; -2], [-2; 2], [2; 2], [2; -2]}, ...
-    'angles', {0, 0, 0, 0}, ...
-    'scaMatrices', {scaM, scaM, scaM, scaM}, ...
-    'scaMatrices_der', {0*scaM, 0*scaM, 0*scaM, 0*scaM});
-
-mTest.SetIncField('planewave');
-mTest.Q = zeros(2*M+1);
-mTest.Calculate4(false);
-ax = mTest.FarFieldPlot();
-
+options = optimset(PlotFcns=@optimplotfval);
+x = fminsearch(@(x) targetFunction(s, x), init);
 
 return
+[optimal_params, history, s] = gradientDescentImproved(s, init, options, @targetFunction);
+
+%% Анализ и визуализация результатов
+fprintf('\n=== РЕЗУЛЬТАТЫ ОПТИМИЗАЦИИ ===\n');
+
+% Визуализация истории сходимости для всех запусков
+figure('Name', 'Сравнение запусков', 'Position', [100, 100, 1200, 800]);
+
+% График значений функции
+subplot(2, 2, 1);
+hold on;
+
+plot(history.f_values, ...
+    'LineWidth', 0.2);
+
+xlabel('Итерация');
+ylabel('Значение функции');
+title('Сходимость для разных запусков');
+% legend('show', 'Location', 'best');
+grid on;
+
+% График норм градиента
+subplot(2, 2, 2);
+hold on;
+    plot(history.grad_norms, ...
+        'LineWidth', 0.2);
+xlabel('Итерация');
+ylabel('Норма градиента');
+title('Норма градиента');
+set(gca, 'YScale', 'log');
+grid on;
+
+
+
+function [current_value, gradient, SYSTEM] = targetFunction(SYSTEM, params)
+    current_value = norm(params);
+    gradient = zeros(size(params));
+    for i = 1:numel(params)
+        gradient(i) = params(i) / current_value;
+    end
+end

@@ -1,4 +1,4 @@
-function obj = Calculate5(obj, calcDer)
+function obj = Calculate6(obj, calcDer)
 % Calculate3
 % Оптимизированная реализация расчёта (прямая + adjoint), ориентированная на
 % ускорение расчёта производных:
@@ -46,12 +46,10 @@ end
 scaM = obj.scaMatrices;
 scaM_der = obj.scaMatrices_der;
 for k = 1:N
-    for s = 1:4
-        Rk = rotationMatrices{k};
-        scaM{k} = Rk * scaM{k} * Rk';
-        if calcDer && ~isempty(scaM_der)
-            scaM_der{4*(k-1)+s} = Rk * scaM_der{4*(k-1)+s} * Rk';
-        end
+    Rk = rotationMatrices{k};
+    scaM{k} = Rk * scaM{k} * Rk';
+    if calcDer && ~isempty(scaM_der)
+        scaM_der{k} = Rk * scaM_der{k} * Rk';
     end
 end
 
@@ -159,6 +157,12 @@ obj.targetFunc = q;
 
 %% Adjoint и производные
 if calcDer
+
+    
+    ns = obj.nAsphCoeffs;
+    nAsphPart = obj.nAsphPart;
+    nAsphParams = ns * nAsphPart;
+
     dqdEs = ((a' * obj.Q - q * a') / nrm);   % 1 x blockSize
     dqdEs_col = dqdEs.';
     
@@ -186,10 +190,93 @@ if calcDer
     
     Lambda = reshape(lmbd, blockSize1, N);
     
-    %% Производные по параметрам формы (индексы 1..N)
-    for k = 1:N
-        for s = 1:4
-            w = scaM_der{4*(k-1)+s} * Right(:, k);
+    %% Производные по радиусам (индексы 1..N)
+    for k = 1:N-nAsphPart
+        w = scaM_der{k} * Right(:, k);
+        matr = Tkkr{k};
+        termB = dqdEs * (matr(:, M-M1+1:M-M1+1+2*M1) * w);
+        
+        termH = 0;
+        for i = 1:N
+            if i == k
+                continue;
+            end
+            termH = termH + (Lambda(:, i).' * (transMatrices{i, k} * w));
+        end
+        
+        obj.scaMatrix_der{k} = termB + termH;
+    end
+    
+    %% Производные по координатам (x/y) частиц 2..N
+    for dim = 1:2
+        for k = 1:N
+            % dTkk
+            x = obj.coordinates{k}(1);
+            y = obj.coordinates{k}(2);
+            r0 = hypot(x, y);
+            phi0 = atan2(y, x);
+            
+            dTkk = zeros(blockSize, blockSize);
+            if r0 > 1e-12
+                if dim == 1
+                    d_xy = x / r0;
+                    phi_xy = -y / (r0^2);
+                else
+                    d_xy = y / r0;
+                    phi_xy = x / (r0^2);
+                end
+                d = obj.refrIndexOut * r0;
+                dTkk = buildToeplitzDer(diffVec, mid, d, phi0, obj.refrIndexOut, d_xy, phi_xy, 'j');
+            end
+            matr = R * dTkk * R.';
+            termB = dqdEs * (matr(:, M-M1+1:M-M1+1+2*M1) * Sx(:, k));
+            termJ = Lambda(:, k).' * (dTkk(M-M1+1:M-M1+1+2*M1, :) * obj.incCoeffs);
+            
+            termH1 = 0;
+            rowK_sum = zeros(blockSize1, 1);
+            
+            xk = obj.coordinates{k}(1);
+            yk = obj.coordinates{k}(2);
+            for other = 1:N
+                if other == k
+                    continue;
+                end
+                xo = obj.coordinates{other}(1);
+                yo = obj.coordinates{other}(2);
+                
+                dx = xk - xo;
+                dy = yk - yo;
+                rij = hypot(dx, dy);
+                phi = atan2(dy, dx);
+                
+                if dim == 1
+                    d_xy = dx / rij;
+                    phi_xy = -dy / (rij^2);
+                else
+                    d_xy = dy / rij;
+                    phi_xy = dx / (rij^2);
+                end
+                
+                d = obj.refrIndexOut * rij;
+                dT_k_other = buildToeplitzDer(diffVec1, mid1, d, phi, obj.refrIndexOut, d_xy, phi_xy, 'h');
+                dT_other_k = dT_k_other .* Epi1;
+                
+                termH1 = termH1 + Lambda(:, other).' * (-(dT_other_k * Sx(:, k)));
+                rowK_sum = rowK_sum + (-(dT_k_other * Sx(:, other)));
+            end
+            termH2 = Lambda(:, k).' * rowK_sum;
+            termH = termH1 + termH2;
+            
+            idx = N - nAsphPart + 2*k - 2 + dim;
+            obj.scaMatrix_der{idx} = termB + termJ - termH;
+        end
+    end
+    
+    %% Производные по параметрам формы
+    
+    for k = 1:nAsphPart
+        for s = 1:ns
+            w = scaM_der{N - nAsphPart + ns*(k-1)+s} * Right(:, k);
             matr = Tkkr{k};
             termB = dqdEs * (matr(:, M-M1+1:M-M1+1+2*M1) * w);
             
@@ -200,11 +287,9 @@ if calcDer
                 end
                 termH = termH + (Lambda(:, i).' * (transMatrices{i, k} * w));
             end
-            
-            obj.scaMatrix_der{4*(k-1)+s} = termB + termH;
+            obj.scaMatrix_der{N - nAsphPart + ns*(k-1)+s + 2*N} = termB + termH;
         end
     end
-    
 end
 end
 

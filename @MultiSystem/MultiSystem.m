@@ -5,6 +5,8 @@ classdef MultiSystem < BasicScatterer
         % refrIndexOut double = 1.0;
         maxHarmNum1 = 1;
         % scaMatrix double = [];
+        nAsphPart = 0;
+        nAsphCoeffs = 0;
         
         % scaCoeffs double = [];
         % incCoeffs double = [];
@@ -20,7 +22,7 @@ classdef MultiSystem < BasicScatterer
         scaMatrices_der = {};
         scaMatrix_der = {};
         allCoefs = [];
-
+        
         numP;
     end
     
@@ -47,6 +49,10 @@ classdef MultiSystem < BasicScatterer
                             obj.scaMatrices = varargin{i + 1};
                         case 'scamatrices_der'
                             obj.scaMatrices_der = varargin{i + 1};
+                        case 'nasphpart'
+                            obj.nAsphPart = varargin{i + 1};
+                        case 'nasphcoeffs'
+                            obj.nAsphCoeffs = varargin{i + 1};
                     end
                     
                 end
@@ -60,6 +66,7 @@ classdef MultiSystem < BasicScatterer
         obj = Calculate3(obj);
         obj = Calculate4(obj, calcDer);
         obj = Calculate5(obj, calcDer);
+        obj = Calculate6(obj, calcDer);
         obj = CalcIterative(obj, numSteps);
         obj = MultiFarField(obj, parentAx);
         

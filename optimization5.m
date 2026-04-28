@@ -8,7 +8,7 @@
 %% Параметры системы
 M = 20;                % Максимальное гармоническое число
 M1 = 5;
-N = 30;                 % Количество частиц
+N = 1;                 % Количество частиц
 r = 0.5;              % Базовый радиус частиц
 
 %% Настройка физических параметров
@@ -112,11 +112,11 @@ for i = N + 1:3 * N - 2
     options.bounds(2, i) = 0.4;      % Максимальное смещение
 end
 
-% scale = 0.1 * 10;  % Увеличиваем разброс с каждым запуском
-% initial_params = scale * randn(3 * N - 2, 1);
-% fun = @(x) targetFunction(SYSTEM, x);
-% check_gradient(fun, initial_params);
-% return
+scale = 0.1 * 10;  % Увеличиваем разброс с каждым запуском
+initial_params = scale * randn(3 * N - 2, 1);
+fun = @(x) targetFunction(SYSTEM, x);
+check_gradient(fun, initial_params);
+return
 
 %% Цикл по разным начальным параметрам
 final_run = 0;
@@ -563,4 +563,15 @@ function [optimal_params, history] = gradientDescentImproved(SYSTEM, initial_par
     end
     
     optimal_params = best_params;
+
+    % На всякий случай: гарантируем, что возвращаемые параметры соответствуют
+    % наименьшему значению функции из истории.
+    if ~isempty(history.f_values) && ~isempty(history.params_history)
+        [best_value_hist, idx_best] = min(history.f_values);
+        if best_value_hist < best_value && idx_best <= size(history.params_history, 2)
+            best_value = best_value_hist;
+            best_params = history.params_history(:, idx_best);
+            optimal_params = best_params;
+        end
+    end
 end

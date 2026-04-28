@@ -531,4 +531,15 @@ function [optimal_params, history] = gradientDescentImproved(SYSTEM, initial_par
     end
     
     optimal_params = best_params;
+
+    % На всякий случай: гарантируем, что возвращаемые параметры соответствуют
+    % наименьшему значению функции из истории.
+    if ~isempty(history.f_values) && ~isempty(history.params_history)
+        [best_value_hist, idx_best] = min(history.f_values);
+        if best_value_hist < best_value && idx_best <= size(history.params_history, 2)
+            best_value = best_value_hist;
+            best_params = history.params_history(:, idx_best);
+            optimal_params = best_params;
+        end
+    end
 end

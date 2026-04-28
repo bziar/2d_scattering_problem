@@ -1,4 +1,4 @@
-function CheckCondition(obj, show)
+function err = CheckCondition(obj, show)
 
 if nargin < 2
     show = true;
@@ -37,6 +37,7 @@ for m = mArr
 end
 
 obj.condViolation = sum(abs(fieldOnBorder)) / condPoints;
+err = obj.condViolation;
 
 if show
     disp('Condition is ' + string(obj.condViolation) + ' at ' + string(condPoints) + ' points.')
